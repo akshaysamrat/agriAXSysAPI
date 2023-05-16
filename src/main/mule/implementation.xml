@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd">
+	<flow name="CropInsertImplementationFlow" doc:id="01a28825-b83c-4511-9009-a3d4f378bb83" >
+		<file:listener doc:name="On New or Updated File(to read from my local)" doc:id="0effc6e8-bb44-480b-b274-8fb349621046" config-ref="File_Config_common" directory="C:\fileLocation">
+			<scheduling-strategy >
+				<fixed-frequency frequency="5" timeUnit="SECONDS"/>
+			</scheduling-strategy>
+		</file:listener>
+		<try doc:name="Try" doc:id="b7467c2a-4070-4182-b5b3-c820be06b59b" >
+			<ee:transform doc:name="Transform Message to convert in JSON" doc:id="decf11f7-166c-4307-a584-97e32d1a3bf7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-payload>
+			</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="jsonCropSet" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+				</ee:variables>
+		</ee:transform>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="e1ac5318-4b25-4856-84ce-21904950728e" type="ANY">
+					<ee:transform doc:name="Transform Message" doc:id="5209193d-865c-4813-a22e-af441d9fb8ae" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	errorCode : 500,
+	message : "File Not found"
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<flow-ref doc:name="Flow Reference to insertFlow" doc:id="b1209a5b-f463-4040-b762-e617862228b1" name="insertFlow"/>
+		<logger level="INFO" doc:name="Logger" doc:id="cc9ad2ed-bd8a-4677-8140-219475a5311d" message="#[payload]"/>
+		<file:move doc:name="Move to archival" doc:id="1934c576-45e2-4f5c-a507-fcfda591e816" sourcePath="C:\fileLocation\cropsDetails.csv" targetPath="C:\Archive" renameTo='#["cropDetailsArchived" ++ (now() as String{format : "dd-MM-yy-HH-mm"}) ++(random()*100) ++ ".csv"]' config-ref="File_Config_common"/>
+	</flow>
+	<flow name="insertFlow" doc:id="b2ae0cc9-3119-47a1-8774-073f8a7d4ffe" >
+		<ee:transform doc:name="Transform Message" doc:id="49a524f7-e077-4fdc-b2b5-b2498b3d6bd1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+vars.jsonCropSet]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<batch:job jobName="implementationBatch_Job" doc:id="b4e9dd21-9be5-4480-a0b1-43458bc2b69e" maxFailedRecords="5" blockSize="10">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="a73c047e-e6fc-4501-bd93-8934bf1ad66e" >
+					<ee:transform doc:name="Transform Message" doc:id="1973f6d1-c79f-4f72-a882-27969c66fa63" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	cropId : payload.cropId,
+	pH : payload.pH,
+	crop : payload.crop
+	
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="7e2df31f-2518-425d-9952-c89bc6bd4485" size="2">
+						<ee:transform doc:name="Transform Message" doc:id="fee4e22a-849f-4911-ac8a-8ac38ab0b6ba">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload map{
+	cropId : $.cropId,
+	phValue : $.pH,
+	cropName : $.crop
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+						<try doc:name="Try" doc:id="4a0c731a-7967-4f78-9386-d208e9db55c7" >
+							<db:bulk-insert doc:name="Bulk insert" doc:id="0caab66c-e0f1-4443-8827-e144cf9f8bea" config-ref="Database_Config_mySQL_common">
+			<db:sql><![CDATA[insert into cropdetails( CROP_ID,PH_VALUE,CROP_NAME) values (:cropId , :phValue , :cropName)]]></db:sql>
+		</db:bulk-insert>
+							<error-handler >
+								<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="97b80d3a-8e5c-4dee-8324-06df46bac536" type="DB:QUERY_EXECUTION">
+									<db:insert doc:name="Insert" doc:id="8769671f-30e9-4d96-b33f-e0fe33d5e69a" config-ref="Database_Config_mySQL_common">
+										<db:sql ><![CDATA[insert into errordetails values(:errorType , :errorDescription)]]></db:sql>
+										<db:input-parameters ><![CDATA[#[{
+	errorType: error.errorType,
+	errorDescription : error.description
+}]]]></db:input-parameters>
+									</db:insert>
+								</on-error-continue>
+							</error-handler>
+						</try>
+					</batch:aggregator>
+				</batch:step>
+				<batch:step name="Batch_Step1" doc:id="31b9d3fd-e6d7-4e99-a9c8-0614726c2662" acceptPolicy="ONLY_FAILURES">
+					<logger level="INFO" doc:name="Logger" doc:id="7e3b8b31-3a84-499f-a473-749826e4898d" />
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger level="INFO" doc:name="Logger" doc:id="526c24df-430b-4885-a261-3cef2c72bb3a" message="#[payload]"/>
+			</batch:on-complete>
+		</batch:job>
+	</flow>
+	<flow name="SelectFlow" doc:id="aa7f675b-5a38-4a30-bfb7-73ac81ccd844" >
+		<ee:transform doc:name="Transform Message" doc:id="105807fe-7f83-438c-8fd0-77cdbf53d92f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[attributes.queryParams.ph
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="phValue" ><![CDATA[attributes.queryParams.ph]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="1b706d6d-e990-45dc-bf60-e162de536eea" message="#[payload]" />
+		<choice doc:name="Choice" doc:id="ef581fba-b0f8-47a3-817c-843c3e075e64" >
+			<when expression="#[(vars.phValue) as Number &lt; 4]">
+				<raise-error doc:name="Raise error" doc:id="1a8ed2cc-c6a6-448e-9383-4902b9bfe319" type="INVALID_PH_VALUE:PH_NOT_POSSIBLE" description="pH of soil is too acidic"/>
+			</when>
+			<otherwise>
+				<db:select doc:name="Select" doc:id="79b37785-4e5b-4f72-8ad8-eaa4c13944a6" config-ref="Database_Config_mySQL_common">
+			<db:sql><![CDATA[select * from cropdetails where cast(PH_VALUE as decimal) = cast(:ph as decimal)]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	ph: vars.phValue
+}]]]></db:input-parameters>
+		</db:select>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message" doc:id="791dc497-a41b-4657-bae6-7dd7a4c13e1c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="086c2aff-03d2-4f04-8883-dbf5d1b57d0e" type="INVALID_PH_VALUE:PH_NOT_POSSIBLE">
+				<db:insert doc:name="Insert" doc:id="1bcc2d8c-71cd-455c-9ea6-01448286a534" config-ref="Database_Config_mySQL_common">
+					<db:sql ><![CDATA[insert into errordetails values(:errorType , :errorDescription)]]></db:sql>
+					<db:input-parameters ><![CDATA[#[{
+	errorType: error.errorType,
+	errorDescription : error.description
+}]]]></db:input-parameters>
+				</db:insert>
+			</on-error-continue>
+		</error-handler>
+	</flow>
+	<!-- <flow name="implementationFlow" doc:id="22f3c38a-cd01-481e-a9ab-96d969bd531b" >
+		<batch:job jobName="implementationBatch_Job" doc:id="b1c75dad-0359-48fd-82f4-ed098057a320" blockSize="10">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="f4561eaa-dd4a-4f0f-b75a-63d9882e04c6" >
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="a7259633-55c9-46f2-a279-cbda8310cc6c" size="5">
+						<ee:transform doc:name="Transform Message" doc:id="a9bd3c07-e02c-4f20-baf5-41024c42f8db" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+-&#45;&#45;
+{
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<db:bulk-insert doc:name="Bulk insert" doc:id="a5ca6405-4300-4561-bfa2-587d5fb053c3" config-ref="Database_Config">
+							<db:sql ><![CDATA[insert into ]]></db:sql>
+						</db:bulk-insert>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger level="INFO" doc:name="Logger" doc:id="dbf6b19a-b2db-4ef4-bd24-7d81505f7155" message="completed Successfully "/>
+			</batch:on-complete>
+		</batch:job>
+	</flow>
+ --></mule>

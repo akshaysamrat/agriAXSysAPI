@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd 
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd 
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	
+<http:listener-config name="agriaxsysapi-httpListenerConfig-common">
+        <http:listener-connection host="0.0.0.0" port="8084" />
+    </http:listener-config>
+    <apikit:config name="agriaxsysapi-config-common" api="resource::643d199e-134b-4ebe-9be7-4be50978dd31:agriaxsysapi:1.0.1:raml:zip:agriaxsysapi.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />	
+
+<file:config name="File_Config_common" doc:name="File Config" doc:id="df0e1915-b23b-4108-b241-c26da7ac313e" />
+	<db:config name="Database_Config_mySQL_common" doc:name="Database Config" doc:id="5f0c3dd8-c6f0-47eb-829e-0d420aa667f2" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="Test@123" database="akshaydb" />
+	</db:config>
+</mule>
